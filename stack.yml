@@ -1,0 +1,222 @@
+version: '3'
+services:
+#nginx
+  nginx:
+    # build或者指定镜像的话，此项为镜像名称
+    image: nginx:1.19.1
+    # 暴露端口，以HOST:CONTAINER格式映射端口
+    ports:
+      - "80:80"
+    # 将容器目录映射到主机目录（格式 HOST:CONTAINER）
+    volumes:
+      - ./nginx_data/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx_data/conf.d:/etc/nginx/conf.d
+      - ./nginx_data/html:/usr/share/nginx/html
+      - ./nginx_data/log:/var/log/nginx
+    # 容器标签（也可以这样写 com.example.description: "Accounting webapp"）
+    #labels:
+      #- "com.example.description=Accounting webapp"
+    # 添加容器功能（执行man 7 capabilities查看全部）
+    #cap_add:
+      #- ALL
+    # 删除容器功能
+    #cap_drop:
+      #- NET_ADMIN
+      #- SYS_ADMIN
+    # 为容器指定可选的父cgroup
+    #cgroup_parent: m-executor-abcd
+    #覆盖默认命令（也可以是个列表，类似于Dockerfile：command: ["bundle", "exec", "thin", "-p", "3000"]）
+    #command: bundle exec thin -p 3000
+    # 默认docker-compose up 会按照顺序启动服务，如果你有前后顺序，可以指定这个参数，代表db和redis先于webapp启动
+    depends_on:
+      - tomcat
+      - flask
+      - postgrest
+      - geoserver
+    # 部署（仅限v3版本，并且只适合集群部署（docker stack），docker-compose up 将忽略这个选项）
+    deploy:
+      # 启动容器副本数
+      replicas: 1
+      # 资源限制
+      #resources:
+        # 不超过单核CPU的50%可用处理时间 & 不超过50M内存
+        #limits:
+          #cpus: '0.50'
+          #memory: 50M
+        # 始终可用25%CPU时间 & 20M内存
+        #reservations:
+          #cpus: '0.25'
+          #memory: 20M
+      # 重启策略
+      #restart_policy:
+        # 重启时机（none、on-failure、any，默认any）
+        #condition: on-failure
+        # 重启尝试的等待时间
+        #delay: 5s
+        # 最大重试次数（默认永远重试）
+        #max_attempts: 3
+        # 在决定重新启动是否成功之前等待多长时间（默认立即决定）
+        #window: 120s
+      # 配置服务如何更新
+      update_config:
+        # 一次更新的容器数
+        parallelism: 1
+        # 更新一组容器之间的等待时间
+        delay: 10s
+      # 服务标签
+      #labels:
+        #com.example.description: "This label will appear on the web service"
+    # 重启（"no",always,on-failure,unless-stopped）
+    #restart: "no"
+    # 设置内核参数
+    #sysctls:
+      #- net.core.somaxconn=1024
+      #- net.ipv4.tcp_syncookies=0    
+    # 覆盖默认的entrypoint
+    #entrypoint: /code/entrypoint.sh
+    # 从文件添加环境变量。可以是单个值（env_file: .env）或列表，文件内容每一行都是var=val格式化的
+    #env_file:
+      #- ./common.env
+      #- ./apps/web.env
+      #- /opt/secrets.env
+    # 添加环境变量，如果是布尔值要用引号括起来
+    #environment:
+      #- RACK_ENV=development
+      #- SHOW=true
+      #- SESSION_SECRET
+    # 暴露端口但是不把它们发布到主机，它们只能被链接服务访问。只能指定内部端口。
+    #expose:
+      #- "3000"
+      #- "8000"
+    # 链接到外部的容器（格式为 容器名称:别名）
+    #external_links:
+      #- redis_1
+      #- project_db_1:mysql
+      #- project_db_1:postgresql
+    # 添加主机名映射
+    #extra_hosts:
+      #- "somehost:162.242.195.82"
+      #- "otherhost:50.31.209.229"
+    # 日志
+    #logging:
+      # 驱动（默认json-file，还可以为syslog和none）
+      #driver: "json-file"
+      #options:
+        # 日志最大大小，以及文件数量
+        #max-size: "200k"
+        #max-file: "10"
+    # 网络（要引入顶级配置的network）
+    #networks:
+      #- some-network
+      #- other-network
+
+#tomcat
+  tomcat:
+    image: tomcat:9.0.37-jdk8-corretto
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./webapps:/usr/local/tomcat/webapps
+    depends_on:
+      - mysql
+      - redis
+    deploy:
+      replicas: 1
+
+#flask
+  flask:
+    image: flask
+    ports:
+      - "5000:5000"
+    deploy:
+      replicas: 1
+      
+#geoserver
+  geoserver:
+    image: geonode/geoserver:2.17.1
+    ports:
+      - "8081:8080"
+    volumes:
+      - ./geoserver_data:/geoserver_data/data
+    deploy:
+      replicas: 1
+      
+#redis
+  redis:
+    image: redis:6.0.5
+    ports:
+      - "6379:6379"
+    volumes:
+      - ./redis_data:/data
+    deploy:
+      replicas: 1
+      
+#mysql
+  mysql:
+    image: mysql:8.0.21
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./mysql_data:/var/lib/mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: mysql_password
+      TZ: 'Asia/Shanghai'
+    command:
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+    deploy:
+      replicas: 1
+      
+#postgis
+  postgis:
+    image: postgis/postgis:12-2.5
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./postgis_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: gis_db
+      POSTGRES_USER: gis_user
+      POSTGRES_PASSWORD: gis_password
+    deploy:
+      replicas: 1
+    
+#postgrest
+  postgrest:
+    image: postgrest/postgrest:latest
+    ports:
+      - "3000:3000"
+    environment:
+      PGRST_DB_URI: postgres://app_user:app_password@postgresql:5432/app_db
+      PGRST_DB_SCHEMA: public
+      PGRST_DB_ANON_ROLE: app_user
+    depends_on:
+      - postgresql
+    deploy:
+      replicas: 1
+      
+#postgresql
+  postgresql:
+    image: postgres:12.3
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./pg_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: app_db
+      POSTGRES_USER: app_user
+      POSTGRES_PASSWORD: app_password
+    deploy:
+      replicas: 1
+      
+#volumes:
+#  nginx_html:
+#  redis_data:
+#  pg_data:
+
+# 配置网络
+#networks:
+  #some-network:
+  #other-network:
+    #external:
+      #name: actual-name-of-network
